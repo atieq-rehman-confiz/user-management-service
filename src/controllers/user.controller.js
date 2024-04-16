@@ -1,51 +1,63 @@
 const User = require('../models/user.model');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
-// Create a new user
-const createUser = async (req, res) => {
-  try {
-    const user = new User(req.body);
-    await user.save();
-    res.status(201).json(user);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-};
+// Controller functions for user service
+const registerUser = async (req, res) => {
+  const { username, email, password } = req.body;
 
-// Get all users
-const getUsers = async (req, res) => {
   try {
-    const users = await User.find();
-    res.status(200).json(users);
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // Encrypt the password before saving
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({ username, email, password: hashedPassword });
+    await newUser.save();
+
+    res.status(201).json({ message: 'User registered successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-};
+}
 
-// Update a user by ID
-const updateUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const user = await User.findByIdAndUpdate(id, req.body, { new: true });
-    res.status(200).json(user);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-};
+const loginUser = async (req, res) => {
+  const { email, password } = req.body;
 
-// Delete a user by ID
-const deleteUser = async (req, res) => {
   try {
-    const { id } = req.params;
-    await User.findByIdAndDelete(id);
-    res.status(204).send();
+    // Validate user and password
+    const user = await User.findOne({ email });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ userId: user._id }, 'secret', { expiresIn: '1h' });
+
+    res.json({ token });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(500).json({ message: error.message });
   }
-};
+}
+
+const updateProfile = async (req, res) => {
+  const { username } = req.body;
+  const userId = req.user.userId; // Assuming userId is extracted from JWT token
+
+  try {
+    await User.findByIdAndUpdate(userId, { username });
+    res.json({ message: 'Profile updated successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
 
 module.exports = {
-  createUser,
-  getUsers,
-  updateUser,
-  deleteUser
+  registerUser,
+  loginUser,
+  updateProfile
 };
